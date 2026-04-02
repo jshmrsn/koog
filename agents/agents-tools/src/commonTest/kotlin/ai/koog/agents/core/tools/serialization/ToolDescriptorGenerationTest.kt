@@ -72,6 +72,60 @@ object ComplexNestedTool : SimpleTool<ComplexNestedToolArgs>(
 class ToolDescriptorGenerationTest {
     @Test
     fun testComplexToolDescriptorGeneration() {
+        val addressTypeEnum = ToolParameterType.Enum(AddressType.entries.map { it.name }.toTypedArray())
+        val addressObject = ToolParameterType.Object(
+            properties = listOf(
+                ToolParameterDescriptor(
+                    name = "type",
+                    description = "The type of address (HOME, WORK, or OTHER)",
+                    type = addressTypeEnum
+                ),
+                ToolParameterDescriptor(
+                    name = "street",
+                    description = "The street address",
+                    type = ToolParameterType.String
+                ),
+                ToolParameterDescriptor(
+                    name = "city",
+                    description = "The city",
+                    type = ToolParameterType.String
+                ),
+                ToolParameterDescriptor(
+                    name = "state",
+                    description = "The state or province",
+                    type = ToolParameterType.String
+                ),
+                ToolParameterDescriptor(
+                    name = "zipCode",
+                    description = "The ZIP or postal code",
+                    type = ToolParameterType.String
+                )
+            ),
+            requiredProperties = listOf("type", "street", "city", "state", "zipCode"),
+            additionalProperties = false
+        )
+        val userProfileObject = ToolParameterType.Object(
+            properties = listOf(
+                ToolParameterDescriptor(
+                    name = "name",
+                    description = "The user's full name",
+                    type = ToolParameterType.String
+                ),
+                ToolParameterDescriptor(
+                    name = "email",
+                    description = "The user's email address",
+                    type = ToolParameterType.String
+                ),
+                ToolParameterDescriptor(
+                    name = "addresses",
+                    description = "The user's addresses",
+                    type = ToolParameterType.List(addressObject)
+                )
+            ),
+            requiredProperties = listOf("name", "email", "addresses"),
+            additionalProperties = false
+        )
+
         val expectedDescriptor = ToolDescriptor(
             name = "complex_nested_tool",
             description = "A tool that processes user profiles with complex nested structures.",
@@ -79,63 +133,7 @@ class ToolDescriptorGenerationTest {
                 ToolParameterDescriptor(
                     name = "profile",
                     description = "The user profile to process",
-                    type = ToolParameterType.Object(
-                        properties = listOf(
-                            ToolParameterDescriptor(
-                                name = "name",
-                                description = "The user's full name",
-                                type = ToolParameterType.String
-                            ),
-                            ToolParameterDescriptor(
-                                name = "email",
-                                description = "The user's email address",
-                                type = ToolParameterType.String
-                            ),
-                            ToolParameterDescriptor(
-                                name = "addresses",
-                                description = "The user's addresses",
-                                type = ToolParameterType.List(
-                                    ToolParameterType.Object(
-                                        properties = listOf(
-                                            ToolParameterDescriptor(
-                                                name = "type",
-                                                description = "The type of address (HOME, WORK, or OTHER)",
-                                                type = ToolParameterType.Enum(
-                                                    AddressType.entries.map {
-                                                        it.name
-                                                    }.toTypedArray()
-                                                )
-                                            ),
-                                            ToolParameterDescriptor(
-                                                name = "street",
-                                                description = "The street address",
-                                                type = ToolParameterType.String
-                                            ),
-                                            ToolParameterDescriptor(
-                                                name = "city",
-                                                description = "The city",
-                                                type = ToolParameterType.String
-                                            ),
-                                            ToolParameterDescriptor(
-                                                name = "state",
-                                                description = "The state or province",
-                                                type = ToolParameterType.String
-                                            ),
-                                            ToolParameterDescriptor(
-                                                name = "zipCode",
-                                                description = "The ZIP or postal code",
-                                                type = ToolParameterType.String
-                                            )
-                                        ),
-                                        requiredProperties = listOf("type", "street", "city", "state", "zipCode"),
-                                        additionalProperties = false
-                                    )
-                                )
-                            )
-                        ),
-                        requiredProperties = listOf("name", "email", "addresses"),
-                        additionalProperties = false
-                    )
+                    type = userProfileObject
                 )
             )
         )

@@ -12,8 +12,10 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments
@@ -54,6 +56,43 @@ object ObjectArgumentTool {
         return TestResult(
             field1 = "foo",
             field2 = foo.a,
+        )
+    }
+}
+
+
+object RecursiveDataStructureArgumentTool {
+    @Serializable
+    class Node(
+        val value: String,
+        val children: List<Node>
+    )
+
+    @Serializable
+    data class TestArg(
+        @property:LLMDescription("root node")
+        val rootNode: Node,
+        @property:LLMDescription("recursive argument")
+        val optionalRecursive: TestArg? = null
+    )
+
+    @Serializable
+    data class TestResult(
+        val rootNodeValue: String,
+        val combinedChildNodesValue: String,
+        val optionalRecursiveNodeValue: String?
+    )
+
+    @Tool
+    @LLMDescription("Recursive data structure argument tool")
+    fun recursiveDataStructureTool(
+        @LLMDescription("Test argument")
+        foo: TestArg,
+    ): TestResult {
+        return TestResult(
+            rootNodeValue = foo.rootNode.value,
+            combinedChildNodesValue = foo.rootNode.children.joinToString(separator = ",") { it.value },
+            optionalRecursiveNodeValue = foo.optionalRecursive?.rootNode?.value
         )
     }
 }
@@ -546,5 +585,49 @@ class ToolsFromCallableTest {
 
         val result = tool.execute(decodedArgs)
         assertEquals(ObjectArgumentTool.TestResult(field1 = "foo", field2 = 42), result)
+    }
+
+    @Test
+    fun testRecursiveDataStructureArgumentTool() = runTest {
+        val tool = ToolFromCallable(
+            callable = RecursiveDataStructureArgumentTool::recursiveDataStructureTool,
+            thisRef = null
+        )
+
+        val args = buildJsonObject {
+            putJsonObject("foo") {
+                putJsonObject("rootNode") {
+                    put("value", "root")
+                    putJsonArray("children") {
+                        addJsonObject {
+                            put("value", "child1")
+                            putJsonArray("children") {}
+                        }
+                        addJsonObject {
+                            put("value", "child2")
+                            putJsonArray("children") {}
+                        }
+                    }
+                }
+                putJsonObject("optionalRecursive") {
+                    putJsonObject("rootNode") {
+                        put("value", "optional")
+                        putJsonArray("children") {}
+                    }
+                }
+            }
+        }.toKoogJSONObject()
+
+        val decodedArgs = tool.decodeArgs(args, serializer)
+
+        val result = tool.execute(decodedArgs)
+        assertEquals(
+            expected = RecursiveDataStructureArgumentTool.TestResult(
+                rootNodeValue = "root",
+                combinedChildNodesValue = "child1,child2",
+                optionalRecursiveNodeValue = "optional"
+            ),
+            actual = result
+        )
     }
 }

@@ -81,6 +81,7 @@ class FunctionSchemaGenerationTest {
     fun testGeneratesToolDescriptorFromFunction() {
         val toolName = "test_tool"
         val toolDescription = "Test tool description"
+        val nestedPropertyDefName = NestedProperty::class.qualifiedName!!
 
         val nestedObject = ToolParameterType.Object(
             properties = listOf(
@@ -163,13 +164,13 @@ class FunctionSchemaGenerationTest {
                 ToolParameterDescriptor(
                     name = "nestedProperty",
                     description = "A custom nested property",
-                    type = nestedObject,
+                    type = ToolParameterType.Reference("#/\$defs/$nestedPropertyDefName"),
                 ),
                 ToolParameterDescriptor(
                     name = "nestedListProperty",
                     description = "",
                     type = ToolParameterType.List(
-                        itemsType = nestedObject
+                        itemsType = ToolParameterType.Reference("#/\$defs/$nestedPropertyDefName")
                     )
                 ),
                 ToolParameterDescriptor(
@@ -179,7 +180,7 @@ class FunctionSchemaGenerationTest {
                         properties = emptyList(),
                         requiredProperties = emptyList(),
                         additionalProperties = true,
-                        additionalPropertiesType = nestedObject,
+                        additionalPropertiesType = ToolParameterType.Reference("#/\$defs/$nestedPropertyDefName"),
                     )
                 ),
                 ToolParameterDescriptor(
@@ -251,15 +252,6 @@ class FunctionSchemaGenerationTest {
                 "doubleProperty",
                 "floatProperty",
                 "booleanNullableProperty",
-                "nullableProperty",
-                "listProperty",
-                "mapProperty",
-                "nestedProperty",
-                "nestedListProperty",
-                "nestedMapProperty",
-                "polymorphicProperty",
-                "enumProperty",
-                "objectProperty",
             ),
             additionalProperties = false,
         )
@@ -283,7 +275,14 @@ class FunctionSchemaGenerationTest {
                         )
                     )
                 )
-            )
+            ),
+            defs = mapOf(
+                nestedPropertyDefName to ToolParameterDescriptor(
+                    name = nestedPropertyDefName,
+                    description = "Nested property class",
+                    type = nestedObject,
+                )
+            ),
         )
 
         val actualDescriptor = getToolDescriptor(
@@ -300,6 +299,7 @@ class FunctionSchemaGenerationTest {
     fun testGeneratesToolDescriptorFromJavaFunction() {
         val toolName = "test_tool"
         val toolDescription = "Test tool description"
+        val nestedPropertyDefName = "${JavaTestFunction.FUNCTION.declaringClass.name}.NestedProperty"
 
         val nestedObject = ToolParameterType.Object(
             properties = listOf(
@@ -372,13 +372,13 @@ class FunctionSchemaGenerationTest {
                 ToolParameterDescriptor(
                     name = "nestedProperty",
                     description = "A custom nested property",
-                    type = nestedObject,
+                    type = ToolParameterType.Reference("#/\$defs/$nestedPropertyDefName"),
                 ),
                 ToolParameterDescriptor(
                     name = "nestedListProperty",
                     description = "",
                     type = ToolParameterType.List(
-                        itemsType = nestedObject
+                        itemsType = ToolParameterType.Reference("#/\$defs/$nestedPropertyDefName")
                     )
                 ),
                 ToolParameterDescriptor(
@@ -388,7 +388,7 @@ class FunctionSchemaGenerationTest {
                         properties = emptyList(),
                         requiredProperties = emptyList(),
                         additionalProperties = true,
-                        additionalPropertiesType = nestedObject,
+                        additionalPropertiesType = ToolParameterType.Reference("#/\$defs/$nestedPropertyDefName"),
                     )
                 ),
                 ToolParameterDescriptor(
@@ -429,7 +429,14 @@ class FunctionSchemaGenerationTest {
                     description = "Another sample parameter",
                     type = javaTestClass,
                 )
-            )
+            ),
+            defs = mapOf(
+                nestedPropertyDefName to ToolParameterDescriptor(
+                    name = nestedPropertyDefName,
+                    description = "Nested property class",
+                    type = nestedObject,
+                )
+            ),
         )
 
         val actualDescriptor = getToolDescriptor(

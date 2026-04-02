@@ -16,6 +16,8 @@ class JavaClassSchemaGeneratorTest {
     fun testGeneratesToolDescriptorFromJavaClass() {
         val toolName = "test_tool"
         val toolDescription = "Test tool description"
+        val javaTestClassName = JavaTestClass.TEST_CLASS.enclosingClass.name
+        val nestedPropertyDefName = "$javaTestClassName.NestedProperty"
 
         val nestedObject = ToolParameterType.Object(
             properties = listOf(
@@ -90,13 +92,13 @@ class JavaClassSchemaGeneratorTest {
                 ToolParameterDescriptor(
                     name = "nestedProperty",
                     description = "A custom nested property",
-                    type = nestedObject,
+                    type = ToolParameterType.Reference("#/\$defs/$nestedPropertyDefName"),
                 ),
                 ToolParameterDescriptor(
                     name = "nestedListProperty",
                     description = "",
                     type = ToolParameterType.List(
-                        itemsType = nestedObject
+                        itemsType = ToolParameterType.Reference("#/\$defs/$nestedPropertyDefName")
                     )
                 ),
                 ToolParameterDescriptor(
@@ -106,7 +108,7 @@ class JavaClassSchemaGeneratorTest {
                         properties = emptyList(),
                         requiredProperties = emptyList(),
                         additionalProperties = true,
-                        additionalPropertiesType = nestedObject,
+                        additionalPropertiesType = ToolParameterType.Reference("#/\$defs/$nestedPropertyDefName"),
                     )
                 ),
                 ToolParameterDescriptor(
@@ -114,6 +116,13 @@ class JavaClassSchemaGeneratorTest {
                     description = "",
                     type = ToolParameterType.Enum(arrayOf("One", "Two")),
                 ),
+            ),
+            defs = mapOf(
+                nestedPropertyDefName to ToolParameterDescriptor(
+                    name = nestedPropertyDefName,
+                    description = "Nested property class",
+                    type = nestedObject,
+                )
             )
         )
 

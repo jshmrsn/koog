@@ -28,6 +28,16 @@ public class OllamaToolDescriptorSchemaGenerator : ToolDescriptorSchemaGenerator
             put("type", JsonPrimitive("object"))
             put("properties", JsonObject(properties))
             put("required", JsonArray(toolDescriptor.requiredParameters.map { JsonPrimitive(it.name) }))
+            if (toolDescriptor.defs.isNotEmpty()) {
+                put(
+                    "\$defs",
+                    buildJsonObject {
+                        toolDescriptor.defs.forEach { (name, definition) ->
+                            put(name, toolParameterToSchema(definition.type, definition.description))
+                        }
+                    }
+                )
+            }
         }
 
         return schemaJson
@@ -54,6 +64,8 @@ public class OllamaToolDescriptorSchemaGenerator : ToolDescriptorSchemaGenerator
                 put("type", "array")
                 put("items", toolParameterToSchema(type.itemsType))
             }
+
+            is ToolParameterType.Reference -> put("\$ref", type.ref)
 
             is ToolParameterType.AnyOf -> {
                 putJsonArray("anyOf") {

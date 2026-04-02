@@ -91,6 +91,65 @@ class DefaultMcpToolDescriptorParserTest {
     }
 
     @Test
+    fun `test parsing recursive refs with local defs`() {
+        val sdkTool = createSdkTool(
+            name = "recursive-tool",
+            description = "A recursive test tool",
+            properties = buildJsonObject {
+                putJsonObject("rootNode") {
+                    put("type", "object")
+                    putJsonObject("properties") {
+                        putJsonObject("value") {
+                            put("type", "string")
+                        }
+                        putJsonObject("children") {
+                            put("type", "array")
+                            putJsonObject("items") {
+                                put("\$ref", "#/properties/rootNode/\$defs/Node")
+                            }
+                        }
+                    }
+                    putJsonArray("required") {
+                        add("value")
+                        add("children")
+                    }
+                    putJsonObject("\$defs") {
+                        putJsonObject("Node") {
+                            put("type", "object")
+                            putJsonObject("properties") {
+                                putJsonObject("value") {
+                                    put("type", "string")
+                                }
+                                putJsonObject("children") {
+                                    put("type", "array")
+                                    putJsonObject("items") {
+                                        put("\$ref", "#/properties/rootNode/\$defs/Node")
+                                    }
+                                }
+                            }
+                            putJsonArray("required") {
+                                add("value")
+                                add("children")
+                            }
+                        }
+                    }
+                }
+            },
+            required = emptyList()
+        )
+
+        val toolDescriptor = parser.parse(sdkTool)
+
+        assertEquals(
+            ToolParameterType.Reference("#/properties/rootNode/\$defs/Node"),
+            (toolDescriptor.optionalParameters.single().type as ToolParameterType.Object)
+                .properties.single { it.name == "children" }
+                .type.let { it as ToolParameterType.List }
+                .itemsType
+        )
+    }
+
+    @Test
     fun `test parsing all parameter types`() {
         // Create an SDK Tool with all parameter types
         val sdkTool = createSdkTool(

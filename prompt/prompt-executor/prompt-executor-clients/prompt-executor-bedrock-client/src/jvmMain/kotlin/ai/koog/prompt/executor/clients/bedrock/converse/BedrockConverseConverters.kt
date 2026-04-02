@@ -715,28 +715,7 @@ internal object BedrockConverseConverters {
 
         val toolSpec = BedrockTool.ToolSpec(
             ToolSpecification {
-                val inputSchema = buildJsonObject {
-                    put("type", "object")
-                    put(
-                        "properties",
-                        buildJsonObject {
-                            (tool.requiredParameters + tool.optionalParameters).forEach { param ->
-                                put(
-                                    param.name,
-                                    BedrockToolSerialization.buildToolParameterSchema(param)
-                                )
-                            }
-                        }
-                    )
-                    put(
-                        "required",
-                        buildJsonArray {
-                            tool.requiredParameters.forEach { param ->
-                                add(param.name)
-                            }
-                        }
-                    )
-                }
+                val inputSchema = BedrockToolSerialization.buildToolInputSchema(tool)
 
                 this.name = tool.name
                 this.description = tool.description

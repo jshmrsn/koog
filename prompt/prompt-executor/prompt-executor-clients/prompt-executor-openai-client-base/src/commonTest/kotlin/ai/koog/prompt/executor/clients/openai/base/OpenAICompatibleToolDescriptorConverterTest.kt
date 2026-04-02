@@ -4,8 +4,11 @@ import ai.koog.agents.core.tools.ToolDescriptor
 import ai.koog.agents.core.tools.ToolParameterDescriptor
 import ai.koog.agents.core.tools.ToolParameterType
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 
 class OpenAICompatibleToolDescriptorConverterTest {
 
@@ -234,5 +237,40 @@ class OpenAICompatibleToolDescriptorConverterTest {
         """.trimIndent()
 
         assertEquals(expected, actual)
+    }
+
+    @Test
+    fun recursive_refs_are_emitted_via_defs() {
+        val nodeRef = ToolParameterType.Reference("#/\$defs/Node")
+        val nodeType = ToolParameterType.Object(
+            properties = listOf(
+                ToolParameterDescriptor("value", "", ToolParameterType.String),
+                ToolParameterDescriptor("children", "", ToolParameterType.List(nodeRef)),
+            ),
+            requiredProperties = listOf("value", "children"),
+            additionalProperties = false,
+        )
+        val descriptor = ToolDescriptor(
+            name = "recursive_tool",
+            description = "Tool with recursive schema",
+            requiredParameters = listOf(
+                ToolParameterDescriptor("rootNode", "Root node", nodeType)
+            ),
+            defs = mapOf(
+                "Node" to ToolParameterDescriptor("Node", "", nodeType)
+            )
+        )
+
+        val actual = OpenAICompatibleToolDescriptorSchemaGenerator().generate(descriptor)
+
+        val rootNode = actual["properties"]?.jsonObject?.get("rootNode")?.jsonObject
+        assertNotNull(rootNode)
+        val children = rootNode["properties"]?.jsonObject?.get("children")?.jsonObject
+        assertNotNull(children)
+        assertEquals("#/\$defs/Node", children["items"]?.jsonObject?.get("\$ref")?.jsonPrimitive?.content)
+
+        val defs = actual["\$defs"]?.jsonObject
+        assertNotNull(defs)
+        assertEquals("object", defs["Node"]?.jsonObject?.get("type")?.jsonPrimitive?.content)
     }
 }

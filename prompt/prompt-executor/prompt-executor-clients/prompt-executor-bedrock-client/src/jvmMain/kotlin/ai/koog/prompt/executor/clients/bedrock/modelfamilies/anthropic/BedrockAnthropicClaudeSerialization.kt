@@ -139,25 +139,7 @@ internal object BedrockAnthropicClaudeSerialization {
                 BedrockAnthropicInvokeModelTool(
                     name = tool.name,
                     description = tool.description,
-                    inputSchema = buildJsonObject {
-                        put("type", "object")
-                        put(
-                            "properties",
-                            buildJsonObject {
-                                (tool.requiredParameters + tool.optionalParameters).forEach { param ->
-                                    put(param.name, BedrockToolSerialization.buildToolParameterSchema(param))
-                                }
-                            }
-                        )
-                        put(
-                            "required",
-                            buildJsonArray {
-                                tool.requiredParameters.forEach { param ->
-                                    add(json.encodeToJsonElement(param.name))
-                                }
-                            }
-                        )
-                    }
+                    inputSchema = BedrockToolSerialization.buildToolInputSchema(tool)
                 )
             }
         } else {

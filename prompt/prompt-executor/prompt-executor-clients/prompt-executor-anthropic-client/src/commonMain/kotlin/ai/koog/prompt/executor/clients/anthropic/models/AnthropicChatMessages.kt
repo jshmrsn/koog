@@ -449,13 +449,16 @@ public data class AnthropicTool(
  *
  * @property properties A JSON object representing the properties within this schema.
  * @property required A list of property names that are mandatory within this schema.
+ * @property defs Reusable JSON Schema definitions referenced from this schema.
  * @property type The type of the schema, always set to "object".
  */
 @InternalLLMClientApi
 @Serializable
 public data class AnthropicToolSchema(
     val properties: JsonObject,
-    val required: List<String>
+    val required: List<String>,
+    @SerialName("\$defs")
+    val defs: JsonObject? = null,
 ) {
     /**
      * The type of the schema. Always returns "object" for Anthropic tool schemas.

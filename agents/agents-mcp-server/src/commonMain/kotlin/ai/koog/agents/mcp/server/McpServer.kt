@@ -168,7 +168,7 @@ private fun ToolDescriptor.asSdkTool(): SdkTool {
         inputSchema = ToolSchema(
             properties = buildJsonObject {
                 (requiredParameters + optionalParameters).forEach { param ->
-                    put(param.name, param.toJsonSchema())
+                    put(param.name, param.toJsonSchema(name = param.name, defs = defs))
                 }
             },
             required = requiredParameters.map { it.name },
@@ -180,12 +180,31 @@ private fun ToolDescriptor.asSdkTool(): SdkTool {
 }
 
 // copied from AbstractOpenAILLMClient.kt
-private fun ToolParameterDescriptor.toJsonSchema(): JsonObject = buildJsonObject {
+private fun ToolParameterDescriptor.toJsonSchema(
+    name: String,
+    defs: Map<String, ToolParameterDescriptor>,
+): JsonObject = buildJsonObject {
     put("description", description)
-    fillJsonSchema(type)
+    fillJsonSchema(type, refRewrite = { ref -> rewriteLocalRef(ref, name) })
+    if (defs.isNotEmpty() && type.containsReference()) {
+        putJsonObject("\$defs") {
+            defs.forEach { (defName, definition) ->
+                putJsonObject(defName) {
+                    put("description", definition.description)
+                    fillJsonSchema(
+                        definition.type,
+                        refRewrite = { ref -> rewriteLocalRef(ref, name) }
+                    )
+                }
+            }
+        }
+    }
 }
 
-private fun JsonObjectBuilder.fillJsonSchema(type: ToolParameterType) {
+private fun JsonObjectBuilder.fillJsonSchema(
+    type: ToolParameterType,
+    refRewrite: (String) -> String,
+) {
     when (type) {
         ToolParameterType.Boolean -> put("type", "boolean")
 
@@ -206,18 +225,23 @@ private fun JsonObjectBuilder.fillJsonSchema(type: ToolParameterType) {
 
         is ToolParameterType.List -> {
             put("type", "array")
-            putJsonObject("items") { fillJsonSchema(type.itemsType) }
+            putJsonObject("items") { fillJsonSchema(type.itemsType, refRewrite) }
         }
 
         is ToolParameterType.AnyOf -> {
             putJsonArray("anyOf") {
                 addAll(
                     type.types.map { propertiesType ->
-                        propertiesType.toJsonSchema()
+                        buildJsonObject {
+                            put("description", propertiesType.description)
+                            fillJsonSchema(propertiesType.type, refRewrite)
+                        }
                     }
                 )
             }
         }
+
+        is ToolParameterType.Reference -> put("\$ref", refRewrite(type.ref))
 
         is ToolParameterType.Object -> {
             put("type", "object")
@@ -225,11 +249,33 @@ private fun JsonObjectBuilder.fillJsonSchema(type: ToolParameterType) {
             putJsonObject("properties") {
                 type.properties.forEach { property ->
                     putJsonObject(property.name) {
-                        fillJsonSchema(property.type)
+                        fillJsonSchema(property.type, refRewrite)
                         put("description", property.description)
                     }
                 }
             }
         }
     }
+}
+
+private fun ToolParameterType.containsReference(): Boolean = when (this) {
+    ToolParameterType.Boolean,
+    ToolParameterType.Float,
+    ToolParameterType.Integer,
+    ToolParameterType.String,
+    ToolParameterType.Null,
+    is ToolParameterType.Enum -> false
+
+    is ToolParameterType.List -> itemsType.containsReference()
+    is ToolParameterType.Reference -> true
+    is ToolParameterType.AnyOf -> types.any { it.type.containsReference() }
+    is ToolParameterType.Object -> {
+        properties.any { it.type.containsReference() } || additionalPropertiesType?.containsReference() == true
+    }
+}
+
+private fun rewriteLocalRef(ref: String, parameterName: String): String = when {
+    ref == "#" -> "#/properties/$parameterName"
+    ref.startsWith("#/\$defs/") -> "#/properties/$parameterName/${ref.removePrefix("#/")}"
+    else -> ref
 }

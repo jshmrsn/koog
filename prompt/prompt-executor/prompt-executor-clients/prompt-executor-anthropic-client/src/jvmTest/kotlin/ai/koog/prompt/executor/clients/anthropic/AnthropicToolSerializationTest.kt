@@ -189,6 +189,52 @@ class AnthropicToolSerializationTest {
     }
 
     @Test
+    fun `createAnthropicRequest should include defs for recursive refs`() {
+        val client = AnthropicLLMClient(apiKey = "test-key")
+        val model = AnthropicModels.Sonnet_4
+        val nodeRef = ToolParameterType.Reference("#/\$defs/Node")
+        val nodeType = ToolParameterType.Object(
+            properties = listOf(
+                ToolParameterDescriptor("value", "", ToolParameterType.String),
+                ToolParameterDescriptor("children", "", ToolParameterType.List(nodeRef)),
+            ),
+            requiredProperties = listOf("value", "children"),
+            additionalProperties = false,
+        )
+        val tool = ToolDescriptor(
+            name = "recursive_tool",
+            description = "Recursive tool",
+            requiredParameters = listOf(
+                ToolParameterDescriptor("rootNode", "Root node", nodeType)
+            ),
+            defs = mapOf(
+                "Node" to ToolParameterDescriptor("Node", "", nodeType)
+            )
+        )
+
+        val requestJson = client.createAnthropicRequest(
+            prompt = Prompt(messages = emptyList(), id = "id"),
+            tools = listOf(tool),
+            model = model,
+            stream = false
+        )
+
+        val request = json.parseToJsonElement(requestJson).jsonObject
+        val inputSchema = request["tools"]?.jsonArray?.firstOrNull()?.jsonObject?.get("input_schema")?.jsonObject
+        assertNotNull(inputSchema)
+        assertEquals(
+            "#/\$defs/Node",
+            inputSchema["properties"]?.jsonObject
+                ?.get("rootNode")?.jsonObject
+                ?.get("properties")?.jsonObject
+                ?.get("children")?.jsonObject
+                ?.get("items")?.jsonObject
+                ?.get("\$ref")?.jsonPrimitive?.content
+        )
+        assertNotNull(inputSchema["\$defs"]?.jsonObject?.get("Node")?.jsonObject)
+    }
+
+    @Test
     fun testCreateAnthropicRequestIncludesIsErrorTrueForErrorToolResult() {
         val client = AnthropicLLMClient(apiKey = "test-key")
         val model = AnthropicModels.Sonnet_4

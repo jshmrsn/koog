@@ -34,6 +34,14 @@ class SerializableSchemaGeneratorTest {
         val polymorphicProperty: TestClosedPolymorphism = TestClosedPolymorphism.SubClass1("id1", "property1"),
         val enumProperty: TestEnum = TestEnum.One,
         val objectProperty: TestObject = TestObject,
+        @property:LLMDescription("root node")
+        val rootNode: Node = Node("root", emptyList())
+    )
+
+    @Serializable
+    class Node(
+        val value: String,
+        val children: List<Node>
     )
 
     @Serializable
@@ -83,6 +91,7 @@ class SerializableSchemaGeneratorTest {
     fun testGeneratesToolDescriptorFromSerializableClass() {
         val toolName = "test_tool"
         val toolDescription = "Test tool description"
+        val nodeDefName = Node::class.qualifiedName!!
 
         val nestedObject = ToolParameterType.Object(
             properties = listOf(
@@ -98,6 +107,26 @@ class SerializableSchemaGeneratorTest {
                 ),
             ),
             requiredProperties = listOf("foo", "bar"),
+            additionalProperties = false,
+        )
+
+        val nodeReference = ToolParameterType.Reference("#/\$defs/$nodeDefName")
+        val nodeObject = ToolParameterType.Object(
+            properties = listOf(
+                ToolParameterDescriptor(
+                    name = "value",
+                    description = "",
+                    type = ToolParameterType.String,
+                ),
+                ToolParameterDescriptor(
+                    name = "children",
+                    description = "",
+                    type = ToolParameterType.List(
+                        itemsType = nodeReference,
+                    )
+                )
+            ),
+            requiredProperties = listOf("value", "children"),
             additionalProperties = false,
         )
 
@@ -169,13 +198,13 @@ class SerializableSchemaGeneratorTest {
                 ToolParameterDescriptor(
                     name = "nestedProperty",
                     description = "A custom nested property",
-                    type = nestedObject,
+                    type = ToolParameterType.Reference("#/\$defs/NestedProperty"),
                 ),
                 ToolParameterDescriptor(
                     name = "nestedListProperty",
                     description = "",
                     type = ToolParameterType.List(
-                        itemsType = nestedObject
+                        itemsType = ToolParameterType.Reference("#/\$defs/NestedProperty")
                     )
                 ),
                 ToolParameterDescriptor(
@@ -185,7 +214,7 @@ class SerializableSchemaGeneratorTest {
                         properties = emptyList(),
                         requiredProperties = emptyList(),
                         additionalProperties = true,
-                        additionalPropertiesType = nestedObject,
+                        additionalPropertiesType = ToolParameterType.Reference("#/\$defs/NestedProperty"),
                     )
                 ),
                 ToolParameterDescriptor(
@@ -248,8 +277,25 @@ class SerializableSchemaGeneratorTest {
                         properties = emptyList(),
                         additionalProperties = false,
                     ),
+                ),
+                ToolParameterDescriptor(
+                    name = "rootNode",
+                    description = "root node",
+                    type = nodeReference,
                 )
             ),
+            defs = mapOf(
+                "NestedProperty" to ToolParameterDescriptor(
+                    name = "NestedProperty",
+                    description = "Nested property class",
+                    type = nestedObject,
+                ),
+                nodeDefName to ToolParameterDescriptor(
+                    name = nodeDefName,
+                    description = "",
+                    type = nodeObject,
+                )
+            )
         )
 
         val actualDescriptor = getToolDescriptor(

@@ -28,6 +28,13 @@ public open class OpenAICompatibleToolDescriptorSchemaGenerator : ToolDescriptor
                 putJsonArray("required") {
                     requiredParameters.forEach { param -> add(param.name) }
                 }
+                if (defs.isNotEmpty()) {
+                    putJsonObject("\$defs") {
+                        defs.forEach { (name, definition) ->
+                            put(name, definition.toJsonSchema())
+                        }
+                    }
+                }
             }
         }
     }
@@ -55,6 +62,8 @@ public open class OpenAICompatibleToolDescriptorSchemaGenerator : ToolDescriptor
                 put("type", "array")
                 putJsonObject("items") { fillJsonSchema(type.itemsType) }
             }
+
+            is ToolParameterType.Reference -> put("\$ref", type.ref)
 
             is ToolParameterType.Object -> {
                 put("type", "object")

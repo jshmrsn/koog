@@ -99,6 +99,19 @@ public sealed class ToolParameterType(public val name: kotlin.String) {
     }
 
     /**
+     * Represents a JSON Schema reference to another definition.
+     *
+     * @property ref JSON Schema reference, for example `#/$defs/Node`.
+     */
+    public data class Reference(val ref: kotlin.String) : ToolParameterType("REFERENCE") {
+        override fun toString(): kotlin.String = buildString {
+            appendLine("ToolParameterType.Reference(")
+            appendLine("  ref = $ref")
+            append(")")
+        }
+    }
+
+    /**
      * Represents an anyOf type parameter.
      *
      * @property types The type definition for the items within the array.

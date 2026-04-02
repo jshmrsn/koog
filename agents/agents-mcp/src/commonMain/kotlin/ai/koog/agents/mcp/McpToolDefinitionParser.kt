@@ -44,6 +44,7 @@ public object DefaultMcpToolDescriptorParser : McpToolDescriptorParser {
     override fun parse(sdkTool: SDKTool): ToolDescriptor {
         // Parse all parameters from the input schema
         val parameters = parseParameters(sdkTool.inputSchema.properties ?: EmptyJsonObject)
+        val defs = collectDefs(sdkTool.inputSchema.properties ?: EmptyJsonObject)
 
         // Get the list of required parameters
         val requiredParameters = sdkTool.inputSchema.required ?: emptyList()
@@ -54,6 +55,7 @@ public object DefaultMcpToolDescriptorParser : McpToolDescriptorParser {
             description = sdkTool.description.orEmpty(),
             requiredParameters = parameters.filter { requiredParameters.contains(it.name) },
             optionalParameters = parameters.filter { !requiredParameters.contains(it.name) },
+            defs = defs,
         )
     }
 
@@ -63,6 +65,10 @@ public object DefaultMcpToolDescriptorParser : McpToolDescriptorParser {
                 "Maximum recursion depth ($MAX_DEPTH) exceeded. " +
                     "This may indicate a circular reference in the parameter definition."
             )
+        }
+
+        element["\$ref"]?.jsonPrimitive?.content?.let { ref ->
+            return ToolParameterType.Reference(ref)
         }
 
         // Extract the type string from the JSON object
@@ -211,5 +217,40 @@ public object DefaultMcpToolDescriptorParser : McpToolDescriptorParser {
                 type = type
             )
         }
+    }
+
+    private fun collectDefs(element: JsonObject, depth: Int = 0): Map<String, ToolParameterDescriptor> {
+        if (depth > MAX_DEPTH) {
+            throw IllegalArgumentException(
+                "Maximum recursion depth ($MAX_DEPTH) exceeded while collecting schema definitions."
+            )
+        }
+
+        val defs = mutableMapOf<String, ToolParameterDescriptor>()
+
+        element["\$defs"]?.jsonObject?.forEach { (name, definition) ->
+            require(definition is JsonObject) { "Definition $name must be a JSON object" }
+            defs[name] = ToolParameterDescriptor(
+                name = name,
+                description = definition["description"]?.jsonPrimitive?.content.orEmpty(),
+                type = parseParameterType(definition, depth + 1),
+            )
+            defs += collectDefs(definition, depth + 1)
+        }
+
+        element["properties"]?.jsonObject?.values
+            ?.filterIsInstance<JsonObject>()
+            ?.forEach { defs += collectDefs(it, depth + 1) }
+
+        element["items"]?.jsonObject?.let { defs += collectDefs(it, depth + 1) }
+
+        element["anyOf"]?.jsonArray
+            ?.map { it.jsonObject }
+            ?.forEach { defs += collectDefs(it, depth + 1) }
+
+        (element["additionalProperties"] as? JsonObject)
+            ?.let { defs += collectDefs(it, depth + 1) }
+
+        return defs
     }
 }

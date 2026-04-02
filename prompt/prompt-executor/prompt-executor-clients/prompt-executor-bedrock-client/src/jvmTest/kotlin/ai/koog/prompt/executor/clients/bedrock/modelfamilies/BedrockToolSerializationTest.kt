@@ -1,5 +1,6 @@
 package ai.koog.prompt.executor.clients.bedrock.modelfamilies
 
+import ai.koog.agents.core.tools.ToolDescriptor
 import ai.koog.agents.core.tools.ToolParameterDescriptor
 import ai.koog.agents.core.tools.ToolParameterType
 import kotlinx.serialization.json.jsonArray
@@ -12,6 +13,7 @@ import java.util.stream.Stream
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import org.junit.jupiter.api.Test
 
 class BedrockToolSerializationTest {
     companion object {
@@ -258,5 +260,40 @@ class BedrockToolSerializationTest {
                 }
             }
         }
+    }
+
+    @Test
+    fun testBuildToolInputSchemaWithRecursiveRefs() {
+        val nodeRef = ToolParameterType.Reference("#/\$defs/Node")
+        val nodeType = ToolParameterType.Object(
+            properties = listOf(
+                ToolParameterDescriptor("value", "", ToolParameterType.String),
+                ToolParameterDescriptor("children", "", ToolParameterType.List(nodeRef)),
+            ),
+            requiredProperties = listOf("value", "children"),
+            additionalProperties = false,
+        )
+        val tool = ToolDescriptor(
+            name = "recursive_tool",
+            description = "Recursive tool",
+            requiredParameters = listOf(
+                ToolParameterDescriptor("rootNode", "Root node", nodeType)
+            ),
+            defs = mapOf(
+                "Node" to ToolParameterDescriptor("Node", "", nodeType)
+            )
+        )
+
+        val schema = BedrockToolSerialization.buildToolInputSchema(tool)
+        assertEquals(
+            "#/\$defs/Node",
+            schema["properties"]?.jsonObject
+                ?.get("rootNode")?.jsonObject
+                ?.get("properties")?.jsonObject
+                ?.get("children")?.jsonObject
+                ?.get("items")?.jsonObject
+                ?.get("\$ref")?.jsonPrimitive?.content
+        )
+        assertNotNull(schema["\$defs"]?.jsonObject?.get("Node")?.jsonObject)
     }
 }

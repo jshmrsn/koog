@@ -12,6 +12,7 @@ import ai.koog.prompt.message.CacheControl
  * @property description The description of the tool.
  * @property requiredParameters A list of ToolParameterDescriptor representing the required parameters for the tool.
  * @property optionalParameters A list of ToolParameterDescriptor representing the optional parameters for the tool.
+ * @property defs JSON Schema-style reusable definitions that may be referenced from parameter types.
  * @property cacheControl Optional cache control to apply after this tool definition.
  */
 public open class ToolDescriptor(
@@ -19,6 +20,7 @@ public open class ToolDescriptor(
     public val description: String,
     public val requiredParameters: List<ToolParameterDescriptor> = emptyList(),
     public val optionalParameters: List<ToolParameterDescriptor> = emptyList(),
+    public val defs: Map<String, ToolParameterDescriptor> = emptyMap(),
     public val cacheControl: CacheControl? = null,
 ) {
     /**
@@ -30,6 +32,7 @@ public open class ToolDescriptor(
      * Defaults to the current required parameters if not provided.
      * @param optionalParameters A list of ToolParameterDescriptor representing the optional parameters for the tool.
      * Defaults to the current optional parameters if not provided.
+     * @param defs JSON Schema-style reusable definitions that may be referenced from parameter types.
      * @param cacheControl Optional cache control to apply after this tool definition.
      * @return A new instance of ToolDescriptor with the updated attributes.
      */
@@ -38,6 +41,7 @@ public open class ToolDescriptor(
         description: String = this.description,
         requiredParameters: List<ToolParameterDescriptor> = this.requiredParameters.toList(),
         optionalParameters: List<ToolParameterDescriptor> = this.optionalParameters.toList(),
+        defs: Map<String, ToolParameterDescriptor> = this.defs.toMap(),
         cacheControl: CacheControl? = this.cacheControl,
     ): ToolDescriptor {
         return ToolDescriptor(
@@ -45,6 +49,7 @@ public open class ToolDescriptor(
             description = description,
             requiredParameters = requiredParameters,
             optionalParameters = optionalParameters,
+            defs = defs,
             cacheControl = cacheControl,
         )
     }
@@ -57,6 +62,7 @@ public open class ToolDescriptor(
         if (description != other.description) return false
         if (requiredParameters != other.requiredParameters) return false
         if (optionalParameters != other.optionalParameters) return false
+        if (defs != other.defs) return false
         if (cacheControl != other.cacheControl) return false
 
         return true
@@ -82,6 +88,16 @@ public open class ToolDescriptor(
         appendParameters(optionalParameters)
         appendLine("  ]")
 
+        if (defs.isNotEmpty()) {
+            appendLine("  defs = [")
+            defs.forEach { (name, definition) ->
+                appendLine("    $name =")
+                append(definition.toString().prependIndent("      "))
+                appendLine(",")
+            }
+            appendLine("  ]")
+        }
+
         appendLine("  cacheControl=$cacheControl")
 
         append(")")
@@ -92,6 +108,7 @@ public open class ToolDescriptor(
         result = 31 * result + description.hashCode()
         result = 31 * result + requiredParameters.hashCode()
         result = 31 * result + optionalParameters.hashCode()
+        result = 31 * result + defs.hashCode()
         result = 31 * result + (cacheControl?.hashCode() ?: 0)
         return result
     }

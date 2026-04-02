@@ -1,10 +1,12 @@
 package ai.koog.prompt.executor.clients.bedrock.modelfamilies
 
+import ai.koog.agents.core.tools.ToolDescriptor
 import ai.koog.agents.core.tools.ToolParameterDescriptor
 import ai.koog.agents.core.tools.ToolParameterType
 import ai.koog.agents.core.tools.annotations.InternalAgentToolsApi
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
@@ -16,6 +18,25 @@ internal object BedrockToolSerialization {
         ignoreUnknownKeys = true
         isLenient = true
         explicitNulls = false
+    }
+
+    internal fun buildToolInputSchema(tool: ToolDescriptor): JsonObject = buildJsonObject {
+        put("type", "object")
+        putJsonObject("properties") {
+            (tool.requiredParameters + tool.optionalParameters).forEach { param ->
+                put(param.name, buildToolParameterSchema(param))
+            }
+        }
+        putJsonArray("required") {
+            tool.requiredParameters.forEach { param -> add(JsonPrimitive(param.name)) }
+        }
+        if (tool.defs.isNotEmpty()) {
+            putJsonObject("\$defs") {
+                tool.defs.forEach { (name, definition) ->
+                    put(name, buildToolParameterSchema(definition))
+                }
+            }
+        }
     }
 
     /**
@@ -50,6 +71,8 @@ internal object BedrockToolSerialization {
                 put("type", "array")
                 put("items", buildTypeSchema(type.itemsType))
             }
+
+            is ToolParameterType.Reference -> put("\$ref", type.ref)
 
             is ToolParameterType.AnyOf -> {
                 // FIXME this is hack, represent union types properly in ToolDescriptor

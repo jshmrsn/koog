@@ -424,18 +424,10 @@ public open class GoogleLLMClient @JvmOverloads constructor(
 
         val googleTools = tools
             .map { tool ->
-                val properties = (tool.requiredParameters + tool.optionalParameters)
-                    .associate { it.name to buildGoogleParamType(it) }
                 GoogleFunctionDeclaration(
                     name = tool.name,
                     description = tool.description,
-                    parameters = buildJsonObject {
-                        put("type", "object")
-                        put("properties", JsonObject(properties))
-                        putJsonArray("required") {
-                            addAll(tool.requiredParameters.map { JsonPrimitive(it.name) })
-                        }
-                    }
+                    parameters = buildGoogleToolParameters(tool)
                 )
             }
             .takeIf { it.isNotEmpty() }
@@ -616,6 +608,8 @@ public open class GoogleLLMClient @JvmOverloads constructor(
                     put("items", buildJsonObject { putType(type.itemsType) })
                 }
 
+                is ToolParameterType.Reference -> put("\$ref", type.ref)
+
                 is ToolParameterType.AnyOf -> {
                     put(
                         "anyOf",
@@ -650,6 +644,31 @@ public open class GoogleLLMClient @JvmOverloads constructor(
         }
 
         putType(param.type)
+    }
+
+    private fun buildGoogleToolParameters(tool: ToolDescriptor): JsonObject = buildJsonObject {
+        put("type", "object")
+        put(
+            "properties",
+            buildJsonObject {
+                (tool.requiredParameters + tool.optionalParameters).forEach { parameter ->
+                    put(parameter.name, buildGoogleParamType(parameter))
+                }
+            }
+        )
+        putJsonArray("required") {
+            addAll(tool.requiredParameters.map { JsonPrimitive(it.name) })
+        }
+        if (tool.defs.isNotEmpty()) {
+            put(
+                "\$defs",
+                buildJsonObject {
+                    tool.defs.forEach { (name, definition) ->
+                        put(name, buildGoogleParamType(definition))
+                    }
+                }
+            )
+        }
     }
 
     /**

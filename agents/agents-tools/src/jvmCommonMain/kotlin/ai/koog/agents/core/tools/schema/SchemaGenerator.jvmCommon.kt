@@ -3,6 +3,7 @@ package ai.koog.agents.core.tools.schema
 import ai.koog.agents.core.tools.ToolDescriptor
 import ai.koog.agents.core.tools.ToolParameterDescriptor
 import ai.koog.agents.core.tools.annotations.InternalAgentToolsApi
+import ai.koog.agents.core.tools.annotations.LLMDescription
 import ai.koog.serialization.JavaClassToken
 import ai.koog.serialization.JavaTypeToken
 import ai.koog.serialization.KSerializerTypeToken
@@ -23,6 +24,7 @@ import kotlinx.serialization.serializerOrNull
 import java.lang.reflect.ParameterizedType
 import kotlin.reflect.KCallable
 import kotlin.reflect.KClass
+import kotlin.reflect.KParameter
 
 private fun createReflectionClassGenerator(
     jsonSchemaConfig: JsonSchemaConfig,
@@ -113,6 +115,20 @@ public fun getToolDescriptor(
     toolDescription: String? = null,
     jsonSchemaConfig: JsonSchemaConfig = defaultJsonSchemaConfig,
 ): ToolDescriptor {
+    val valueParameters = callable.parameters.filter { it.kind == KParameter.Kind.VALUE }
+    val parameterSchemas = valueParameters.associateWith { parameter ->
+        getJsonSchema(KotlinTypeToken(parameter.type), jsonSchemaConfig)
+    }
+
+    if (parameterSchemas.values.any { it.hasRecursiveDefinitions() }) {
+        return buildToolDescriptorWithoutFunctionSchema(
+            callable = callable,
+            parameterSchemas = parameterSchemas,
+            toolName = toolName,
+            toolDescription = toolDescription,
+        )
+    }
+
     val schema = createReflectionFunctionGenerator(jsonSchemaConfig)
         .generateSchema(callable)
 
@@ -135,6 +151,136 @@ public fun getToolDescriptor(
         requiredParameters = requiredParameters,
     )
 }
+
+@OptIn(InternalAgentToolsApi::class)
+private fun buildToolDescriptorWithoutFunctionSchema(
+    callable: KCallable<*>,
+    parameterSchemas: Map<KParameter, JsonSchema>,
+    toolName: String?,
+    toolDescription: String?,
+): ToolDescriptor {
+    val referencePolicies = parameterSchemas.mapValues { (_, schema) ->
+        analyzeSchemaReferencePolicy(schema)
+    }
+
+    val requiredParameters = parameterSchemas.map { (parameter, schema) ->
+        val referencePolicy = referencePolicies.getValue(parameter)
+        val parameterInfo = schema.toRootToolParameterInfo(referencePolicy)
+            .wrapIfNullableParameter(parameter)
+
+        ToolParameterDescriptor(
+            name = parameter.name ?: error("Value parameter without name in callable $callable"),
+            description = parameter.annotations
+                .filterIsInstance<LLMDescription>()
+                .firstOrNull()
+                ?.value
+                ?: parameterInfo.description,
+            type = parameterInfo.type,
+        )
+    }
+
+    val defs = buildMap {
+        parameterSchemas.forEach { (parameter, schema) ->
+            val referencePolicy = referencePolicies.getValue(parameter)
+            schema.defs.orEmpty()
+                .filterKeys { it in referencePolicy.defsToReference }
+                .forEach { (name, definition) ->
+                    put(
+                        name,
+                        definition.toToolParameter(
+                            defs = schema.defs,
+                            resolvingRefs = setOf(name),
+                            defsToReference = referencePolicy.defsToReference,
+                        ).let { info ->
+                            ToolParameterDescriptor(
+                                name = name,
+                                description = info.description,
+                                type = info.type,
+                            )
+                        }
+                    )
+                }
+        }
+    }
+
+    return ToolDescriptor(
+        name = toolName ?: callable.name,
+        description = toolDescription ?: callable.annotations
+            .filterIsInstance<LLMDescription>()
+            .firstOrNull()
+            ?.value
+            .orEmpty(),
+        requiredParameters = requiredParameters,
+        defs = defs,
+    )
+}
+
+@OptIn(InternalAgentToolsApi::class)
+private fun JsonSchema.hasRecursiveDefinitions(): Boolean {
+    return analyzeSchemaReferencePolicy(this).defsToReference.isNotEmpty()
+}
+
+@OptIn(InternalAgentToolsApi::class)
+private fun JsonSchema.toRootToolParameterInfo(
+    referencePolicy: SchemaReferencePolicy,
+): ToolParameterInfo {
+    val rootInfo = toToolParameter(
+        defs = defs,
+        defsToReference = referencePolicy.defsToReference,
+    )
+
+    val rootDefinitionRef = defs.orEmpty()
+        .filterKeys { it in referencePolicy.defsToReference }
+        .entries
+        .firstOrNull { (name, definition) ->
+            definition.toToolParameter(
+                defs = defs,
+                resolvingRefs = setOf(name),
+                defsToReference = referencePolicy.defsToReference,
+            ).type == rootInfo.type
+        }
+        ?.key
+
+    return if (rootDefinitionRef != null) {
+        ToolParameterInfo(
+            type = ai.koog.agents.core.tools.ToolParameterType.Reference("#/\$defs/$rootDefinitionRef"),
+            description = rootInfo.description,
+        )
+    } else {
+        rootInfo
+    }
+}
+
+@OptIn(InternalAgentToolsApi::class)
+private fun ToolParameterInfo.wrapIfNullableParameter(parameter: KParameter): ToolParameterInfo {
+    if (!parameter.type.isMarkedNullable || type.isNullUnion()) {
+        return this
+    }
+
+    return ToolParameterInfo(
+        type = ai.koog.agents.core.tools.ToolParameterType.AnyOf(
+            types = arrayOf(
+                ToolParameterDescriptor(
+                    name = "",
+                    description = "",
+                    type = ai.koog.agents.core.tools.ToolParameterType.Null,
+                ),
+                ToolParameterDescriptor(
+                    name = "",
+                    description = "",
+                    type = type,
+                ),
+            )
+        ),
+        description = description,
+    )
+}
+
+@OptIn(InternalAgentToolsApi::class)
+private fun ai.koog.agents.core.tools.ToolParameterType.isNullUnion(): Boolean =
+    this is ai.koog.agents.core.tools.ToolParameterType.AnyOf &&
+        types.size == 2 &&
+        types.any { it.type is ai.koog.agents.core.tools.ToolParameterType.Null }
 
 @InternalKoogSerializationApi
 private fun findKSerializer(typeToken: TypeToken): KSerializer<*>? {

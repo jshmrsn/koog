@@ -5,8 +5,11 @@ import ai.koog.agents.core.tools.ToolParameterDescriptor
 import ai.koog.agents.core.tools.ToolParameterType
 import ai.koog.prompt.executor.ollama.tools.json.OllamaToolDescriptorSchemaGenerator
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 
 class JSONSchemaFunctionConverterTest {
     val json = Json {
@@ -202,5 +205,42 @@ class JSONSchemaFunctionConverterTest {
         """.trimIndent()
 
         assertEquals(expectedSchema, generatedSchema)
+    }
+
+    @Test
+    fun `test function definition with recursive refs`() {
+        val nodeRef = ToolParameterType.Reference("#/\$defs/Node")
+        val nodeType = ToolParameterType.Object(
+            properties = listOf(
+                ToolParameterDescriptor("value", "", ToolParameterType.String),
+                ToolParameterDescriptor("children", "", ToolParameterType.List(nodeRef)),
+            ),
+            requiredProperties = listOf("value", "children"),
+        )
+        val toolDescriptor = ToolDescriptor(
+            name = "recursive_tool",
+            description = "Recursive tool",
+            requiredParameters = listOf(
+                ToolParameterDescriptor("rootNode", "Root node", nodeType)
+            ),
+            defs = mapOf(
+                "Node" to ToolParameterDescriptor("Node", "", nodeType)
+            )
+        )
+
+        val generatedSchema = OllamaToolDescriptorSchemaGenerator().generate(toolDescriptor)
+        val rootNode = generatedSchema["properties"]?.jsonObject?.get("rootNode")?.jsonObject
+        assertNotNull(rootNode)
+        assertEquals(
+            "#/\$defs/Node",
+            rootNode["properties"]?.jsonObject
+                ?.get("children")?.jsonObject
+                ?.get("items")?.jsonObject
+                ?.get("\$ref")?.jsonPrimitive?.content
+        )
+
+        val defs = generatedSchema["\$defs"]?.jsonObject
+        assertNotNull(defs)
+        assertEquals("object", defs["Node"]?.jsonObject?.get("type")?.jsonPrimitive?.content)
     }
 }

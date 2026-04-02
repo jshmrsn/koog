@@ -1,6 +1,7 @@
 package ai.koog.prompt.executor.clients.anthropic
 
 import ai.koog.agents.core.tools.ToolDescriptor
+import ai.koog.agents.core.tools.ToolParameterDescriptor
 import ai.koog.agents.core.tools.ToolParameterType
 import ai.koog.agents.core.tools.annotations.InternalAgentToolsApi
 import ai.koog.http.client.KoogHttpClient
@@ -52,7 +53,11 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNamingStrategy
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
+import kotlinx.serialization.json.putJsonObject
 import kotlin.jvm.JvmOverloads
 import kotlin.time.Clock
 import kotlin.uuid.ExperimentalUuidApi
@@ -424,22 +429,15 @@ public open class AnthropicLLMClient @JvmOverloads constructor(
         }
 
         val anthropicTools = tools.map { tool ->
-            val properties = mutableMapOf<String, JsonElement>()
-
-            (tool.requiredParameters + tool.optionalParameters).forEach { param ->
-                val typeMap = getTypeMapForParameter(param.type)
-
-                properties[param.name] = JsonObject(
-                    mapOf("description" to JsonPrimitive(param.description)) + typeMap
-                )
-            }
-
             AnthropicTool(
                 name = tool.name,
                 description = tool.description,
                 inputSchema = AnthropicToolSchema(
-                    properties = JsonObject(properties),
-                    required = tool.requiredParameters.map { it.name }
+                    properties = buildInputSchemaProperties(tool),
+                    required = tool.requiredParameters.map { it.name },
+                    defs = tool.defs
+                        .takeIf { it.isNotEmpty() }
+                        ?.let(::buildDefinitionsJson)
                 )
             )
         }
@@ -662,6 +660,12 @@ public open class AnthropicLLMClient @JvmOverloads constructor(
                 )
             )
 
+            is ToolParameterType.Reference -> JsonObject(
+                mapOf(
+                    "\$ref" to JsonPrimitive(type.ref)
+                )
+            )
+
             is ToolParameterType.Object -> {
                 // Create properties map with proper type information
                 val propertiesMap = mutableMapOf<String, JsonElement>()
@@ -702,6 +706,25 @@ public open class AnthropicLLMClient @JvmOverloads constructor(
                 type.hackRepresentAnyOfWithNullAsTypeUnionWithNull(::getTypeMapForParameter)
                     ?: throw LLMClientException(clientName, "AnyOf type is not supported")
             }
+        }
+    }
+
+    private fun buildInputSchemaProperties(tool: ToolDescriptor): JsonObject = buildJsonObject {
+        (tool.requiredParameters + tool.optionalParameters).forEach { param ->
+            put(param.name, buildSchemaForParameter(param))
+        }
+    }
+
+    private fun buildDefinitionsJson(defs: Map<String, ToolParameterDescriptor>): JsonObject = buildJsonObject {
+        defs.forEach { (name, definition) ->
+            put(name, buildSchemaForParameter(definition))
+        }
+    }
+
+    private fun buildSchemaForParameter(param: ToolParameterDescriptor): JsonObject = buildJsonObject {
+        put("description", param.description)
+        getTypeMapForParameter(param.type).forEach { (key, value) ->
+            put(key, value)
         }
     }
 

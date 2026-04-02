@@ -20,13 +20,9 @@ private fun ToolDescriptor.asNovaToolSpec() = NovaToolSpec(
         name = name,
         description = description,
         inputSchema = NovaInputSchema(
-            json = NovaJsonSchema(
-                properties = buildJsonObject {
-                    (requiredParameters + optionalParameters).forEach { param ->
-                        put(param.name, BedrockToolSerialization.buildToolParameterSchema(param))
-                    }
-                },
-                required = requiredParameters.map { it.name }
+            json = Json.Default.decodeFromJsonElement(
+                NovaJsonSchema.serializer(),
+                BedrockToolSerialization.buildToolInputSchema(this)
             )
         )
     )
